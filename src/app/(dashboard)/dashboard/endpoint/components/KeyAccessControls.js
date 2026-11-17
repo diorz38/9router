@@ -39,7 +39,13 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict 
         size="sm"
         checked={access.restricted}
         label="Restrict access"
-        onChange={(checked) => (checked ? onRequestRestrict() : onChange({ restricted: false, allow: access.allow }))}
+        onChange={(checked) =>
+          checked
+            ? onRequestRestrict
+              ? onRequestRestrict()
+              : onChange({ restricted: true, allow: access.allow })
+            : onChange({ restricted: false, allow: access.allow })
+        }
       />
       {access.restricted && (
         <div className="mt-2 flex flex-wrap items-center gap-1.5">
@@ -87,10 +93,10 @@ export default function KeyAccessControls({ apiKey, onChange, onRequestRestrict 
 
 KeyAccessControls.propTypes = {
   apiKey: PropTypes.shape({
-    id: PropTypes.string.isRequired,
+    id: PropTypes.string,
     name: PropTypes.string,
     access: PropTypes.shape({ restricted: PropTypes.bool, allow: PropTypes.arrayOf(PropTypes.string) }),
   }).isRequired,
   onChange: PropTypes.func.isRequired,
-  onRequestRestrict: PropTypes.func.isRequired,
+  onRequestRestrict: PropTypes.func,
 };

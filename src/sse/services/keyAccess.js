@@ -30,6 +30,7 @@ import {
   KEY_ACCESS_COMBO_OWNER,
   KEY_ACCESS_PROVIDER_AS_MODEL_KINDS,
   keyAccessDeniedMessage,
+  KEY_QUOTA_EXCEEDED_MESSAGE,
 } from "@/shared/constants/keyAccess.js";
 import { errorResponse } from "open-sse/utils/error.js";
 import { HTTP_STATUS } from "open-sse/config/runtimeConfig.js";
@@ -71,11 +72,17 @@ export async function getKeyAccessContext(request) {
   const apiKey = extractClientApiKey(request);
   if (!apiKey) return null;
   const record = await getApiKeyByKey(apiKey);
-  if (!record?.access?.restricted) return null;
+  if (!record) return null;
+  const hasRestrictedModels = !!record.access?.restricted;
+  const hasTokenLimit = record.maxTokens != null && record.maxTokens > 0;
+  if (!hasRestrictedModels && !hasTokenLimit) return null;
   return {
     keyId: record.id,
     keyName: record.name || record.id,
-    allow: record.access.allow || [],
+    isRestricted: hasRestrictedModels,
+    allow: record.access?.allow || [],
+    maxTokens: record.maxTokens ?? null,
+    usedTokens: record.usedTokens ?? 0,
     _sets: null,
   };
 }
@@ -115,6 +122,28 @@ export function keyAccessDeniedResponse(ctx, requested) {
   return errorResponse(HTTP_STATUS.FORBIDDEN, keyAccessDeniedMessage(requested));
 }
 
+export function keyQuotaExceededResponse(ctx) {
+  log.warn("AUTH", `key-quota: key "${ctx.keyName}" exceeded max token limit (${ctx.usedTokens} >= ${ctx.maxTokens})`);
+  return new Response(JSON.stringify({
+    error: {
+      message: KEY_QUOTA_EXCEEDED_MESSAGE,
+      type: "insufficient_quota",
+      code: "token_limit_exceeded",
+    }
+  }), {
+    status: HTTP_STATUS.RATE_LIMITED,
+    headers: { "Content-Type": "application/json" }
+  });
+}
+
+export function enforceKeyQuota(ctx) {
+  if (!ctx) return null;
+  if (ctx.maxTokens != null && ctx.maxTokens > 0 && ctx.usedTokens >= ctx.maxTokens) {
+    return keyQuotaExceededResponse(ctx);
+  }
+  return null;
+}
+
 /**
  * Gate for endpoints whose `model` may be a combo or a model (chat, image, tts).
  * Call with the requested string BEFORE combo expansion.
@@ -122,6 +151,9 @@ export function keyAccessDeniedResponse(ctx, requested) {
  */
 export async function enforceKeyAccess(ctx, requested) {
   if (!ctx) return null;
+  const quotaDenied = enforceKeyQuota(ctx);
+  if (quotaDenied) return quotaDenied;
+  if (!ctx.isRestricted) return null;
   if (typeof requested !== "string" || !requested) return keyAccessDeniedResponse(ctx, String(requested ?? ""));
   const sets = await getAllowSets(ctx);
   const comboModels = await getComboModels(requested);
@@ -139,6 +171,9 @@ export async function enforceKeyAccess(ctx, requested) {
  */
 export async function enforceKeyAccessResolved(ctx, requested, provider, model) {
   if (!ctx) return null;
+  const quotaDenied = enforceKeyQuota(ctx);
+  if (quotaDenied) return quotaDenied;
+  if (!ctx.isRestricted) return null;
   const label = requested || (provider ? `${provider}/${model ?? ""}` : "");
   if (!provider || !model) return keyAccessDeniedResponse(ctx, label);
   const sets = await getAllowSets(ctx);
@@ -151,6 +186,9 @@ export async function enforceKeyAccessResolved(ctx, requested, provider, model) 
  */
 export async function enforceKeyAccessProvider(ctx, requested, comboModels) {
   if (!ctx) return null;
+  const quotaDenied = enforceKeyQuota(ctx);
+  if (quotaDenied) return quotaDenied;
+  if (!ctx.isRestricted) return null;
   if (typeof requested !== "string" || !requested) return keyAccessDeniedResponse(ctx, String(requested ?? ""));
   const sets = await getAllowSets(ctx);
   const allowed = comboModels
@@ -166,7 +204,7 @@ export async function enforceKeyAccessProvider(ctx, requested, comboModels) {
  * model just shortens the fallback list, so combo failover is unaffected.
  */
 export async function filterAdapterModels(ctx, augmented, original) {
-  if (!ctx || !Array.isArray(augmented)) return augmented;
+  if (!ctx || !ctx.isRestricted || !Array.isArray(augmented)) return augmented;
   const keep = new Set(original || []);
   const out = [];
   for (const m of augmented) {
@@ -178,7 +216,7 @@ export async function filterAdapterModels(ctx, augmented, original) {
 
 /** /v1/models: a restricted key sees only the combos and models it may call. */
 export async function filterModelsListForKey(ctx, list) {
-  if (!ctx || !Array.isArray(list)) return list;
+  if (!ctx || !ctx.isRestricted || !Array.isArray(list)) return list;
   const sets = await getAllowSets(ctx);
   const out = [];
   for (const entry of list) {

@@ -24,6 +24,10 @@ export default function APIPageClient({ machineId }) {
   const [loading, setLoading] = useState(true);
   const [showAddModal, setShowAddModal] = useState(false);
   const [newKeyName, setNewKeyName] = useState("");
+  const [newKeyAccess, setNewKeyAccess] = useState({ restricted: false, allow: [] });
+  const [newKeyMaxTokens, setNewKeyMaxTokens] = useState("");
+  const [quotaEditKey, setQuotaEditKey] = useState(null);
+  const [editMaxTokensVal, setEditMaxTokensVal] = useState("");
   const [createdKey, setCreatedKey] = useState(null);
   const [confirmState, setConfirmState] = useState(null);
 
@@ -615,26 +619,88 @@ export default function APIPageClient({ machineId }) {
     }
   };
 
+  const resetAddModal = () => {
+    setShowAddModal(false);
+    setNewKeyName("");
+    setNewKeyMaxTokens("");
+    setNewKeyAccess({ restricted: false, allow: [] });
+  };
+
   const handleCreateKey = async () => {
     if (!newKeyName.trim()) return;
 
     try {
+      const payload = {
+        name: newKeyName.trim(),
+        access: newKeyAccess,
+      };
+      if (newKeyMaxTokens.trim()) {
+        const num = Number(newKeyMaxTokens.trim());
+        if (Number.isFinite(num) && num > 0) {
+          payload.maxTokens = Math.floor(num);
+        }
+      }
+
       const res = await fetch("/api/keys", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: newKeyName }),
+        body: JSON.stringify(payload),
       });
       const data = await res.json();
 
       if (res.ok) {
         setCreatedKey(data.key);
         await fetchData();
-        setNewKeyName("");
-        setShowAddModal(false);
+        resetAddModal();
       }
     } catch (error) {
       console.log("Error creating key:", error);
     }
+  };
+
+  const handleSaveQuota = async () => {
+    if (!quotaEditKey) return;
+    try {
+      let maxTokens = null;
+      if (editMaxTokensVal.trim()) {
+        const num = Number(editMaxTokensVal.trim());
+        if (Number.isFinite(num) && num > 0) {
+          maxTokens = Math.floor(num);
+        }
+      }
+      const res = await fetch(`/api/keys/${quotaEditKey.id}`, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ maxTokens }),
+      });
+      if (res.ok) {
+        await fetchData();
+        setQuotaEditKey(null);
+        setEditMaxTokensVal("");
+      }
+    } catch (error) {
+      console.log("Error updating key quota:", error);
+    }
+  };
+
+  const handleResetUsage = async (key) => {
+    setConfirmState({
+      title: "Reset Token Usage",
+      message: `Reset token usage counter for "${key.name}" to 0?`,
+      onConfirm: async () => {
+        setConfirmState(null);
+        try {
+          const res = await fetch(`/api/keys/${key.id}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ resetUsage: true }),
+          });
+          if (res.ok) await fetchData();
+        } catch (error) {
+          console.log("Error resetting usage:", error);
+        }
+      },
+    });
   };
 
   const handleDeleteKey = async (id) => {
@@ -1056,6 +1122,43 @@ export default function APIPageClient({ machineId }) {
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
+                  <div className="mt-2 flex flex-wrap items-center gap-2 text-xs">
+                    <span className="font-medium text-text-muted">Usage:</span>
+                    <span className={`font-mono ${key.maxTokens && (key.usedTokens || 0) >= key.maxTokens ? "text-red-500 font-semibold" : "text-text-main"}`}>
+                      {(key.usedTokens || 0).toLocaleString()}
+                      {key.maxTokens ? ` / ${key.maxTokens.toLocaleString()} tokens` : " tokens (unlimited)"}
+                    </span>
+                    {key.maxTokens ? (
+                      <span className={`rounded px-1.5 py-0.5 text-[10px] font-medium ${
+                        (key.usedTokens || 0) >= key.maxTokens
+                          ? "bg-red-500/10 text-red-500 border border-red-500/20"
+                          : "bg-primary/10 text-primary border border-primary/20"
+                      }`}>
+                        {Math.min(100, Math.round(((key.usedTokens || 0) / key.maxTokens) * 100))}%
+                      </span>
+                    ) : null}
+                    <button
+                      onClick={() => {
+                        setQuotaEditKey(key);
+                        setEditMaxTokensVal(key.maxTokens ? String(key.maxTokens) : "");
+                      }}
+                      className="text-text-muted hover:text-primary transition-colors inline-flex items-center gap-0.5 text-[11px] ml-1"
+                      title="Edit token quota"
+                    >
+                      <span className="material-symbols-outlined text-[13px]">tune</span>
+                      Edit quota
+                    </button>
+                    {(key.usedTokens || 0) > 0 && (
+                      <button
+                        onClick={() => handleResetUsage(key)}
+                        className="text-text-muted hover:text-orange-500 transition-colors inline-flex items-center gap-0.5 text-[11px]"
+                        title="Reset token usage to 0"
+                      >
+                        <span className="material-symbols-outlined text-[13px]">restart_alt</span>
+                        Reset
+                      </button>
+                    )}
+                  </div>
                   <KeyAccessControls
                     apiKey={key}
                     onChange={(access) => handleUpdateKeyAccess(key.id, access)}
@@ -1106,10 +1209,7 @@ export default function APIPageClient({ machineId }) {
       <Modal
         isOpen={showAddModal}
         title="Create API Key"
-        onClose={() => {
-          setShowAddModal(false);
-          setNewKeyName("");
-        }}
+        onClose={resetAddModal}
       >
         <div className="flex flex-col gap-4">
           <Input
@@ -1118,15 +1218,60 @@ export default function APIPageClient({ machineId }) {
             onChange={(e) => setNewKeyName(e.target.value)}
             placeholder="Production Key"
           />
-          <div className="flex gap-2">
+          <Input
+            label="Max Tokens (optional)"
+            type="number"
+            min="0"
+            value={newKeyMaxTokens}
+            onChange={(e) => setNewKeyMaxTokens(e.target.value)}
+            placeholder="e.g. 100000 (leave blank for unlimited)"
+          />
+          <div className="border-t border-black/5 dark:border-white/5 pt-3">
+            <span className="text-xs font-medium text-text-muted">Allowed Models & Combos</span>
+            <KeyAccessControls
+              apiKey={{ id: "new", name: newKeyName || "New Key", access: newKeyAccess }}
+              onChange={(access) => setNewKeyAccess(access)}
+            />
+          </div>
+          <div className="flex gap-2 mt-2">
             <Button onClick={handleCreateKey} fullWidth disabled={!newKeyName.trim()}>
               Create
             </Button>
             <Button
-              onClick={() => {
-                setShowAddModal(false);
-                setNewKeyName("");
-              }}
+              onClick={resetAddModal}
+              variant="ghost"
+              fullWidth
+            >
+              Cancel
+            </Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Edit Quota Modal */}
+      <Modal
+        isOpen={!!quotaEditKey}
+        title={`Edit Quota — ${quotaEditKey?.name || ""}`}
+        onClose={() => setQuotaEditKey(null)}
+      >
+        <div className="flex flex-col gap-4">
+          <p className="text-xs text-text-muted">
+            Set a maximum token limit for this API key. Once reached, requests will be rejected with a 429 quota error. Leave blank for unlimited.
+          </p>
+          <Input
+            label="Max Tokens"
+            type="number"
+            min="0"
+            value={editMaxTokensVal}
+            onChange={(e) => setEditMaxTokensVal(e.target.value)}
+            placeholder="e.g. 100000 (leave blank for unlimited)"
+          />
+          <div className="flex gap-2">
+            <Button onClick={handleSaveQuota} fullWidth>
+              Save Quota
+            </Button>
+            <Button
+              onClick={() => setQuotaEditKey(null)}
               variant="ghost"
               fullWidth
             >

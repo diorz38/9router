@@ -59,7 +59,18 @@ export default function ChangelogModal({ isOpen, onClose }) {
       >
         {/* Header */}
         <div className="flex items-center justify-between p-3 border-b border-black/5 dark:border-white/5">
-          <h2 className="text-lg font-semibold text-text-main">Change Log</h2>
+          <div className="flex items-center gap-2">
+            <h2 className="text-lg font-semibold text-text-main">Change Log</h2>
+            <a
+              href={`${GITHUB_CONFIG.repoUrl || "https://github.com/diorz38/9router"}/blob/master/CHANGELOG.md`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-text-muted hover:text-text-main inline-flex items-center gap-0.5 ml-2"
+              title="View on GitHub"
+            >
+              GitHub <span className="material-symbols-outlined text-[13px]">open_in_new</span>
+            </a>
+          </div>
           <button
             onClick={onClose}
             className="p-1.5 rounded-lg text-text-muted hover:bg-black/5 dark:hover:bg-white/5 transition-colors"

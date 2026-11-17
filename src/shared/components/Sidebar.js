@@ -5,7 +5,7 @@ import PropTypes from "prop-types";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/shared/utils/cn";
-import { APP_CONFIG, UPDATER_CONFIG } from "@/shared/constants/config";
+import { APP_CONFIG, UPDATER_CONFIG, GITHUB_CONFIG } from "@/shared/constants/config";
 import { MEDIA_PROVIDER_KINDS } from "@/shared/constants/providers";
 import { useCopyToClipboard } from "@/shared/hooks/useCopyToClipboard";
 import useSettingsStore from "@/store/settingsStore";
@@ -133,9 +133,21 @@ export default function Sidebar({ onClose }) {
           </Link>
           {updateInfo && (
             <div className="flex flex-col gap-1.5 rounded p-1 -m-1">
-              <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
-                ↑ New version available: v{updateInfo.latestVersion}
-              </span>
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-semibold text-green-600 dark:text-amber-500">
+                  ↑ New version available: v{updateInfo.latestVersion}
+                </span>
+                <a
+                  href={updateInfo.releaseUrl || updateInfo.repoUrl || GITHUB_CONFIG.repoUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-[10px] text-text-muted hover:text-text-main underline inline-flex items-center gap-0.5"
+                  title="View GitHub repository"
+                >
+                  GitHub
+                  <span className="material-symbols-outlined text-[10px]">open_in_new</span>
+                </a>
+              </div>
               <div className="flex items-center gap-2">
                 <button
                   onClick={() => setShowUpdateModal(true)}
@@ -145,7 +157,7 @@ export default function Sidebar({ onClose }) {
                 </button>
                 <button
                   onClick={() => copy(INSTALL_CMD)}
-                  title="Copy install command"
+                  title="Copy update command"
                   className="flex-1 text-left hover:opacity-80 transition-opacity cursor-pointer min-w-0"
                 >
                   <code className="block text-[10px] text-green-600/80 dark:text-amber-400/70 font-mono truncate">
@@ -362,7 +374,7 @@ export default function Sidebar({ onClose }) {
         onClose={() => setShowUpdateModal(false)}
         onConfirm={handleUpdate}
         title="Update 9Router"
-        message={`Show install command for v${updateInfo?.latestVersion || ""}? You can copy it and shutdown to install manually.`}
+        message={`Show update command for v${updateInfo?.latestVersion || ""}? You can copy it and shutdown to update from ${updateInfo?.repoUrl || GITHUB_CONFIG.repoUrl}.`}
         confirmText="Show Command"
         cancelText="Cancel"
         variant="primary"
@@ -380,6 +392,7 @@ export default function Sidebar({ onClose }) {
               onCancel={handleCancelUpdate}
               countdown={shutdownCountdown}
               isDisconnected={isDisconnected}
+              repoUrl={updateInfo?.repoUrl || GITHUB_CONFIG.repoUrl}
             />
           ) : (
             <div className="text-center p-8">
@@ -403,7 +416,7 @@ Sidebar.propTypes = {
   onClose: PropTypes.func,
 };
 
-function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdown, onCancel, countdown, isDisconnected }) {
+function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdown, onCancel, countdown, isDisconnected, repoUrl }) {
   const isCountingDown = countdown > 0;
   return (
     <div className="w-full max-w-lg rounded-xl bg-neutral-900/95 border border-white/10 p-6 text-white">
@@ -418,20 +431,33 @@ function ManualUpdatePanel({ latestVersion, installCmd, copied, onCopyAndShutdow
               ? "Server stopped. Paste the command into a terminal to install."
               : isCountingDown
                 ? `Command copied. Server will stop in ${countdown}s...`
-                : "Click the button below to copy the install command and shutdown."}
+                : "Click the button below to copy the update command and shutdown."}
           </p>
         </div>
       </div>
 
-      <p className="text-sm text-white/80 mb-2">Install command:</p>
+      <p className="text-sm text-white/80 mb-2">Update command:</p>
       <div className="w-full px-3 py-2 rounded bg-white/5 mb-4">
         <code className="text-xs font-mono text-amber-400 break-all">{installCmd}</code>
+      </div>
+
+      <div className="mb-4 text-xs text-white/70">
+        <span>Repository: </span>
+        <a
+          href={repoUrl || GITHUB_CONFIG.repoUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="text-amber-400 hover:underline inline-flex items-center gap-1"
+        >
+          {repoUrl || GITHUB_CONFIG.repoUrl}
+          <span className="material-symbols-outlined text-[12px]">open_in_new</span>
+        </a>
       </div>
 
       <ol className="text-xs text-white/70 space-y-1 list-decimal list-inside mb-4">
         <li>Click <strong>Copy & Shutdown</strong> below.</li>
         <li>Paste the command into your terminal and press Enter.</li>
-        <li>Run <code className="px-1 rounded bg-white/10 text-green-400">9router</code> again after install.</li>
+        <li>Start the server again after update.</li>
       </ol>
 
       {isDisconnected ? (
@@ -460,4 +486,5 @@ ManualUpdatePanel.propTypes = {
   onCancel: PropTypes.func.isRequired,
   countdown: PropTypes.number,
   isDisconnected: PropTypes.bool,
+  repoUrl: PropTypes.string,
 };

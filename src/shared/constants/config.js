@@ -9,15 +9,17 @@ export const APP_CONFIG = {
 
 // GitHub configuration
 export const GITHUB_CONFIG = {
-  changelogUrl: "https://raw.githubusercontent.com/decolua/9router/refs/heads/master/CHANGELOG.md",
+  repoUrl: "https://github.com/diorz38/9router",
+  changelogUrl: "https://raw.githubusercontent.com/diorz38/9router/refs/heads/master/CHANGELOG.md",
   donateUrl: "https://9router.com/api/donate",
 };
 
 // Updater configuration
 export const UPDATER_CONFIG = {
+  repoUrl: "https://github.com/diorz38/9router",
   npmPackageName: "9router",
-  installCmd: "npm i -g 9router",
-  installCmdLatest: "npm i -g 9router@latest --prefer-online",
+  installCmd: "git pull && npm install && npm run build",
+  installCmdLatest: "git pull origin master && npm install && npm run build",
   shutdownCountdownSec: 3,
   exitDelayMs: 500,
   statusPort: 20129,
@@ -29,7 +31,7 @@ export const UPDATER_CONFIG = {
   waitForExitMinMs: 5000,
   waitForExitMaxMs: 20000,
   waitForExitCheckMs: 500,
-  appPort: 20128,
+  appPort: 20228,
 };
 
 // Theme configuration

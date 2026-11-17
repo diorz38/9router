@@ -303,6 +303,14 @@ export async function saveRequestUsage(entry) {
       const cur = db.get(`SELECT value FROM _meta WHERE key = 'totalRequestsLifetime'`);
       const next = (cur ? parseInt(cur.value, 10) : 0) + 1;
       db.run(`INSERT INTO _meta(key, value) VALUES('totalRequestsLifetime', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value`, [String(next)]);
+
+      // Increment usedTokens on API key if used
+      if (entry.apiKey && (promptTokens + completionTokens) > 0) {
+        db.run(
+          `UPDATE apiKeys SET usedTokens = COALESCE(usedTokens, 0) + ? WHERE key = ?`,
+          [promptTokens + completionTokens, entry.apiKey]
+        );
+      }
       inserted = true;
     });
 

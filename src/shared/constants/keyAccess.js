@@ -22,3 +22,6 @@ export const KEY_ACCESS_COMBO_OWNER = "combo";
 export function keyAccessDeniedMessage(requested) {
   return `This API key is not allowed to use model "${requested}"`;
 }
+
+// Client-facing 429 quota exceeded message
+export const KEY_QUOTA_EXCEEDED_MESSAGE = "You have exceeded your API key max token limit.";
