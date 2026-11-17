@@ -26,6 +26,10 @@ export default function APIPageClient({ machineId }) {
   const [newKeyName, setNewKeyName] = useState("");
   const [newKeyAccess, setNewKeyAccess] = useState({ restricted: false, allow: [] });
   const [newKeyMaxTokens, setNewKeyMaxTokens] = useState("");
+  const [portalUsers, setPortalUsers] = useState([]);
+  const [userMode, setUserMode] = useState("auto"); // "auto" | "existing" | "none"
+  const [selectedUserId, setSelectedUserId] = useState("");
+  const [createdResult, setCreatedResult] = useState(null);
   const [quotaEditKey, setQuotaEditKey] = useState(null);
   const [editMaxTokensVal, setEditMaxTokensVal] = useState("");
   const [createdKey, setCreatedKey] = useState(null);
@@ -272,6 +276,15 @@ export default function APIPageClient({ machineId }) {
         } catch { /* fall through to empty render */ }
       }
       setKeys(existing);
+
+      // Fetch portal users
+      try {
+        const uRes = await fetch("/api/portal-users");
+        if (uRes.ok) {
+          const uData = await uRes.json();
+          setPortalUsers(uData.users || []);
+        }
+      } catch {}
     } catch (error) {
       console.log("Error fetching data:", error);
     } finally {
@@ -624,6 +637,8 @@ export default function APIPageClient({ machineId }) {
     setNewKeyName("");
     setNewKeyMaxTokens("");
     setNewKeyAccess({ restricted: false, allow: [] });
+    setUserMode("auto");
+    setSelectedUserId("");
   };
 
   const handleCreateKey = async () => {
@@ -633,6 +648,8 @@ export default function APIPageClient({ machineId }) {
       const payload = {
         name: newKeyName.trim(),
         access: newKeyAccess,
+        autoCreateUser: userMode === "auto",
+        userId: userMode === "existing" ? selectedUserId : null,
       };
       if (newKeyMaxTokens.trim()) {
         const num = Number(newKeyMaxTokens.trim());
@@ -649,6 +666,7 @@ export default function APIPageClient({ machineId }) {
       const data = await res.json();
 
       if (res.ok) {
+        setCreatedResult(data);
         setCreatedKey(data.key);
         await fetchData();
         resetAddModal();
@@ -1119,6 +1137,16 @@ export default function APIPageClient({ machineId }) {
                   <p className="text-xs text-text-muted mt-1">
                     Created {new Date(key.createdAt).toLocaleDateString()}
                   </p>
+                  {key.userId && (
+                    <div className="mt-1 flex items-center gap-1 text-[11px] text-text-muted">
+                      <span className="material-symbols-outlined text-[13px] text-amber-500">account_circle</span>
+                      <span>
+                        User: <span className="font-mono text-amber-500 font-medium">
+                          {portalUsers.find((u) => u.id === key.userId)?.username || key.userId}
+                        </span>
+                      </span>
+                    </div>
+                  )}
                   {key.isActive === false && (
                     <p className="text-xs text-orange-500 mt-1">Paused</p>
                   )}
@@ -1218,6 +1246,78 @@ export default function APIPageClient({ machineId }) {
             onChange={(e) => setNewKeyName(e.target.value)}
             placeholder="Production Key"
           />
+
+          {/* Client Portal User Assignment */}
+          <div className="border-t border-black/5 dark:border-white/5 pt-3">
+            <span className="text-xs font-medium text-text-muted mb-2 block">Client Portal Access</span>
+            <div className="flex gap-1.5 mb-2.5">
+              <button
+                type="button"
+                onClick={() => setUserMode("auto")}
+                className={`flex-1 py-1 px-2 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                  userMode === "auto"
+                    ? "bg-amber-500/10 border-amber-500 text-amber-500 font-semibold"
+                    : "border-black/10 dark:border-white/10 text-text-muted hover:text-text-main"
+                }`}
+              >
+                Auto-Create User
+              </button>
+              {portalUsers.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setUserMode("existing");
+                    if (!selectedUserId && portalUsers[0]) setSelectedUserId(portalUsers[0].id);
+                  }}
+                  className={`flex-1 py-1 px-2 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                    userMode === "existing"
+                      ? "bg-amber-500/10 border-amber-500 text-amber-500 font-semibold"
+                      : "border-black/10 dark:border-white/10 text-text-muted hover:text-text-main"
+                  }`}
+                >
+                  Existing User
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => setUserMode("none")}
+                className={`flex-1 py-1 px-2 rounded-lg text-xs font-medium border transition-colors cursor-pointer ${
+                  userMode === "none"
+                    ? "bg-amber-500/10 border-amber-500 text-amber-500 font-semibold"
+                    : "border-black/10 dark:border-white/10 text-text-muted hover:text-text-main"
+                }`}
+              >
+                No User
+              </button>
+            </div>
+
+            {userMode === "auto" && (
+              <p className="text-[11px] text-text-muted bg-black/5 dark:bg-white/5 p-2 rounded">
+                ⚡ A unique username and secure password will be automatically generated. You can copy the login credentials once created.
+              </p>
+            )}
+
+            {userMode === "existing" && (
+              <div className="flex flex-col gap-1">
+                <label className="text-[11px] text-text-muted">Select User:</label>
+                <select
+                  value={selectedUserId}
+                  onChange={(e) => setSelectedUserId(e.target.value)}
+                  className="w-full px-3 py-1.5 rounded-lg bg-surface border border-black/10 dark:border-white/10 text-text-main text-xs focus:outline-none"
+                >
+                  {portalUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.username} {u.name ? `(${u.name})` : ""}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-[11px] text-text-muted mt-0.5">
+                  This key will be added to this user's existing portal account.
+                </p>
+              </div>
+            )}
+          </div>
+
           <Input
             label="Max Tokens (optional)"
             type="number"
@@ -1285,32 +1385,71 @@ export default function APIPageClient({ machineId }) {
       <Modal
         isOpen={!!createdKey}
         title="API Key Created"
-        onClose={() => setCreatedKey(null)}
+        onClose={() => { setCreatedKey(null); setCreatedResult(null); }}
       >
         <div className="flex flex-col gap-4">
-          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
-            <p className="text-sm text-yellow-800 dark:text-yellow-200 mb-2 font-medium">
+          <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-3">
+            <p className="text-xs text-yellow-800 dark:text-yellow-200 font-medium">
               Save this key now!
             </p>
-            <p className="text-sm text-yellow-700 dark:text-yellow-300">
+            <p className="text-[11px] text-yellow-700 dark:text-yellow-300 mt-0.5">
               Store this key securely. You can view or copy it later from the API Keys list.
             </p>
           </div>
-          <div className="flex gap-2">
-            <Input
-              value={createdKey || ""}
-              readOnly
-              className="flex-1 font-mono text-sm"
-            />
-            <Button
-              variant="secondary"
-              icon={copied === "created_key" ? "check" : "content_copy"}
-              onClick={() => copy(createdKey, "created_key")}
-            >
-              {copied === "created_key" ? "Copied!" : "Copy"}
-            </Button>
+
+          <div>
+            <label className="text-xs font-medium text-text-muted mb-1 block">API Key</label>
+            <div className="flex gap-2">
+              <Input
+                value={createdKey || ""}
+                readOnly
+                className="flex-1 font-mono text-xs"
+              />
+              <Button
+                variant="secondary"
+                icon={copied === "created_key" ? "check" : "content_copy"}
+                onClick={() => copy(createdKey, "created_key")}
+              >
+                {copied === "created_key" ? "Copied!" : "Copy"}
+              </Button>
+            </div>
           </div>
-          <Button onClick={() => setCreatedKey(null)} fullWidth>
+
+          {createdResult?.portalUser && (
+            <div className="bg-black/5 dark:bg-white/5 border border-black/10 dark:border-white/10 rounded-xl p-3.5 space-y-2.5">
+              <div className="flex items-center gap-1.5">
+                <span className="material-symbols-outlined text-amber-500 text-[18px]">account_circle</span>
+                <span className="text-xs font-semibold text-text-main">Client Portal Credentials</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2 text-xs">
+                <div className="bg-surface p-2 rounded border border-black/5 dark:border-white/5">
+                  <span className="text-text-muted text-[10px] block">Username:</span>
+                  <code className="font-mono text-amber-500 font-semibold text-xs">{createdResult.portalUser.username}</code>
+                </div>
+                <div className="bg-surface p-2 rounded border border-black/5 dark:border-white/5">
+                  <span className="text-text-muted text-[10px] block">Password:</span>
+                  <code className="font-mono text-amber-500 font-semibold text-xs">{createdResult.portalUser.rawPassword}</code>
+                </div>
+              </div>
+              <p className="text-[10px] text-text-muted">
+                Portal Login: <code className="text-text-main font-mono">{typeof window !== "undefined" ? `${window.location.protocol}//${window.location.hostname}:20229/portal/login` : "http://<host>:20229/portal/login"}</code>
+              </p>
+              <Button
+                variant="secondary"
+                fullWidth
+                icon={copied === "all_creds" ? "check" : "content_copy"}
+                onClick={() => {
+                  const portalUrl = typeof window !== "undefined" ? `${window.location.protocol}//${window.location.hostname}:20229/portal/login` : "http://<host>:20229/portal/login";
+                  const text = `API Key: ${createdKey}\nPortal URL: ${portalUrl}\nUsername: ${createdResult.portalUser.username}\nPassword: ${createdResult.portalUser.rawPassword}`;
+                  copy(text, "all_creds");
+                }}
+              >
+                {copied === "all_creds" ? "Copied All Credentials!" : "Copy All Credentials"}
+              </Button>
+            </div>
+          )}
+
+          <Button onClick={() => { setCreatedKey(null); setCreatedResult(null); }} fullWidth>
             Done
           </Button>
         </div>

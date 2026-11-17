@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { getSettings, validateApiKey } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { verifyDashboardAuthToken } from "@/lib/auth/dashboardSession";
+import { verifyPortalAuthToken, PORTAL_COOKIE_NAME } from "@/lib/auth/portalSession";
 import { hasTrustedPeerHeaders } from "@/lib/auth/trustedPeer";
 
 const CLI_TOKEN_HEADER = "x-9r-cli-token";
@@ -31,6 +32,9 @@ const PUBLIC_API_PATHS = [
   "/api/auth/saml",
   "/api/version",
   "/api/settings/require-login",
+  "/api/portal/auth/login",
+  "/api/portal/auth/logout",
+  "/api/portal/auth/status",
 ];
 
 // Public top-level prefixes (LLM API endpoints with their own API key auth).
@@ -230,7 +234,44 @@ export async function proxy(request) {
     return NextResponse.json({ error: "API key required for remote API access" }, { status: 401 });
   }
 
-  // Deny-by-default for /api/* — public allow-list bypasses, everything else requires auth.
+  // Port isolation check: If request arrived on dedicated User Portal port
+  const isPortalPort = request.headers.get("x-9r-portal-port") === "1";
+  if (isPortalPort) {
+    if (pathname.startsWith("/dashboard") || (pathname.startsWith("/api/") && !pathname.startsWith("/api/portal/"))) {
+      return NextResponse.json({ error: "Admin dashboard is not accessible on user portal port" }, { status: 403 });
+    }
+    if (pathname === "/") {
+      return NextResponse.redirect(new URL("/portal", request.url));
+    }
+  }
+
+  // Handle User Portal routes (/portal/*)
+  if (pathname.startsWith("/portal")) {
+    const portalToken = request.cookies.get(PORTAL_COOKIE_NAME)?.value;
+    const isPortalAuth = portalToken ? Boolean(await verifyPortalAuthToken(portalToken)) : false;
+
+    if (pathname === "/portal/login") {
+      if (isPortalAuth) {
+        return NextResponse.redirect(new URL("/portal", request.url));
+      }
+      return NextResponse.next();
+    }
+
+    if (!isPortalAuth) {
+      return NextResponse.redirect(new URL("/portal/login", request.url));
+    }
+    return NextResponse.next();
+  }
+
+  // Handle User Portal API routes (/api/portal/*)
+  if (pathname.startsWith("/api/portal/")) {
+    if (isPublicApi(pathname)) return NextResponse.next();
+    const portalToken = request.cookies.get(PORTAL_COOKIE_NAME)?.value;
+    if (portalToken && (await verifyPortalAuthToken(portalToken))) {
+      return NextResponse.next();
+    }
+    return NextResponse.json({ error: "Unauthorized portal access" }, { status: 401 });
+  }
   if (pathname.startsWith("/api/")) {
     if (isPublicApi(pathname)) return NextResponse.next();
     if (await hasValidCliToken(request) || await isAuthenticated(request))

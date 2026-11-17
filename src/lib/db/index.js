@@ -31,9 +31,17 @@ export {
 
 // API keys
 export {
-  getApiKeys, getApiKeyById, getApiKeyByKey, createApiKey, updateApiKey, deleteApiKey, validateApiKey,
+  getApiKeys, getApiKeyById, getApiKeyByKey, getApiKeysByUserId, createApiKey, updateApiKey, deleteApiKey, validateApiKey,
   incrementApiKeyTokens, resetApiKeyUsage,
 } from "./repos/apiKeysRepo.js";
+
+// Portal Users (Client Portal)
+export {
+  createPortalUser, getPortalUserById, getPortalUserByUsername,
+  listPortalUsers, updatePortalUser, deletePortalUser,
+  generateRandomUsername, generateRandomPassword, generateUniqueUsername,
+  hashPassword, verifyPassword,
+} from "./repos/portalUsersRepo.js";
 
 // Combos
 export {

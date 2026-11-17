@@ -12,6 +12,7 @@ function rowToKey(row) {
     machineId: row.machineId,
     isActive: row.isActive === 1 || row.isActive === true,
     createdAt: row.createdAt,
+    userId: row.userId !== undefined && row.userId !== null ? row.userId : null,
     access: keyAccessFromColumns(row.accessRestricted, row.accessAllow),
     maxTokens: row.maxTokens !== undefined && row.maxTokens !== null ? Number(row.maxTokens) : null,
     usedTokens: row.usedTokens !== undefined && row.usedTokens !== null ? Number(row.usedTokens) : 0,
@@ -30,6 +31,13 @@ export async function getApiKeyById(id) {
   return rowToKey(row);
 }
 
+export async function getApiKeysByUserId(userId) {
+  if (!userId) return [];
+  const db = await getAdapter();
+  const rows = db.all(`SELECT * FROM apiKeys WHERE userId = ? ORDER BY createdAt ASC`, [userId]);
+  return rows.map(rowToKey);
+}
+
 // Used by the /v1 handlers to read the presented key's access settings.
 export async function getApiKeyByKey(key) {
   if (!key) return null;
@@ -45,6 +53,7 @@ export async function createApiKey(name, machineId, options = {}) {
   const result = generateApiKeyWithMachine(machineId);
   const maxTokens = typeof options.maxTokens === "number" && options.maxTokens > 0 ? Math.floor(options.maxTokens) : null;
   const access = options.access || { restricted: false, allow: [] };
+  const userId = options.userId || null;
   const apiKey = {
     id: uuidv4(),
     name,
@@ -52,14 +61,15 @@ export async function createApiKey(name, machineId, options = {}) {
     machineId,
     isActive: true,
     createdAt: new Date().toISOString(),
+    userId,
     access,
     maxTokens,
     usedTokens: 0,
   };
   const cols = keyAccessToColumns(access || KEY_ACCESS_UNRESTRICTED);
   db.run(
-    `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, accessRestricted, accessAllow, maxTokens, usedTokens) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, cols.accessRestricted, cols.accessAllow, maxTokens, 0]
+    `INSERT INTO apiKeys(id, key, name, machineId, isActive, createdAt, userId, accessRestricted, accessAllow, maxTokens, usedTokens) VALUES(?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [apiKey.id, apiKey.key, apiKey.name, apiKey.machineId, 1, apiKey.createdAt, userId, cols.accessRestricted, cols.accessAllow, maxTokens, 0]
   );
   return apiKey;
 }
@@ -79,13 +89,15 @@ export async function updateApiKey(id, data) {
     const usedTokens = merged.usedTokens !== undefined && merged.usedTokens !== null
       ? Math.max(0, Math.floor(Number(merged.usedTokens)))
       : 0;
+    const userId = merged.userId !== undefined ? merged.userId : current.userId;
     db.run(
-      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, accessRestricted = ?, accessAllow = ?, maxTokens = ?, usedTokens = ? WHERE id = ?`,
+      `UPDATE apiKeys SET key = ?, name = ?, machineId = ?, isActive = ?, userId = ?, accessRestricted = ?, accessAllow = ?, maxTokens = ?, usedTokens = ? WHERE id = ?`,
       [
         merged.key,
         merged.name,
         merged.machineId,
         merged.isActive ? 1 : 0,
+        userId,
         cols.accessRestricted,
         cols.accessAllow,
         maxTokens,

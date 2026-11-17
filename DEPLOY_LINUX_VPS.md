@@ -206,6 +206,7 @@ REQUIRE_API_KEY=true
 # ----------------- RUNTIME SETTINGS -----------------
 NODE_ENV=production
 PORT=20228
+USER_PORT=20229
 HOSTNAME=127.0.0.1
 DATA_DIR=/var/lib/9router
 ENABLE_REQUEST_LOGS=true

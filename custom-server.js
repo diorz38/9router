@@ -75,6 +75,31 @@ http.createServer = (...args) => {
   const server = origCreate(...rest, wrapped);
   server.once("listening", () => {
     startBackgroundTokenRefreshFromCustomServer();
+
+    // Spawn secondary HTTP listener for User Portal (port 20229 by default, configurable via USER_PORT)
+    const userPortalPort = parseInt(process.env.USER_PORT || process.env.PORT_USER || "20229", 10);
+    const mainPort = server.address()?.port;
+    if (userPortalPort && userPortalPort !== mainPort) {
+      try {
+        const portalServer = origCreate((portalReq, portalRes) => {
+          portalReq.headers["x-9r-portal-port"] = "1";
+          wrapped(portalReq, portalRes);
+        });
+        portalServer.on("error", (err) => {
+          console.warn(`[UserPortal] Could not start portal listener on :${userPortalPort}:`, err.message);
+        });
+        portalServer.listen(userPortalPort, () => {
+          console.log(`[UserPortal] Client Portal running on http://127.0.0.1:${userPortalPort}/portal`);
+        });
+        const stopPortal = () => {
+          try { portalServer.close(); } catch {}
+        };
+        process.once("SIGINT", stopPortal);
+        process.once("SIGTERM", stopPortal);
+      } catch (err) {
+        console.warn(`[UserPortal] Failed to spawn secondary listener:`, err.message);
+      }
+    }
   });
   const origEmit = server.emit;
   // JBR 25 sends h2c upgrades that the HTTP/1.1 server would otherwise close.

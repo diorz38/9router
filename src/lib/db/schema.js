@@ -3,7 +3,7 @@
 // pre-change safety backup in migrate.js: when the stored version is lower,
 // one lightweight DB backup is taken before applying schema changes. Forgetting
 // to bump only skips that backup — it does NOT break the additive auto-sync.
-export const SCHEMA_VERSION = 3;
+export const SCHEMA_VERSION = 4;
 
 export const PRAGMA_SQL = `
 PRAGMA journal_mode = WAL;
@@ -75,6 +75,18 @@ export const TABLES = {
       "CREATE INDEX IF NOT EXISTS idx_pp_status ON proxyPools(testStatus)",
     ],
   },
+  portalUsers: {
+    columns: {
+      id: "TEXT PRIMARY KEY",
+      username: "TEXT UNIQUE NOT NULL",
+      passwordHash: "TEXT NOT NULL",
+      name: "TEXT",
+      isActive: "INTEGER DEFAULT 1",
+      createdAt: "TEXT NOT NULL",
+      updatedAt: "TEXT NOT NULL",
+    },
+    indexes: ["CREATE INDEX IF NOT EXISTS idx_pu_username ON portalUsers(username)"],
+  },
   apiKeys: {
     columns: {
       id: "TEXT PRIMARY KEY",
@@ -83,6 +95,8 @@ export const TABLES = {
       machineId: "TEXT",
       isActive: "INTEGER DEFAULT 1",
       createdAt: "TEXT NOT NULL",
+      // Optional reference to a portalUser (1:N user -> keys)
+      userId: "TEXT DEFAULT NULL",
       // Per-key access control and token quotas. Additive columns, picked up by
       // syncSchemaFromTables() on boot; existing rows read as unrestricted (0 / NULL).
       accessRestricted: "INTEGER DEFAULT 0",
@@ -90,7 +104,10 @@ export const TABLES = {
       maxTokens: "INTEGER DEFAULT NULL",
       usedTokens: "INTEGER DEFAULT 0",
     },
-    indexes: ["CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)"],
+    indexes: [
+      "CREATE INDEX IF NOT EXISTS idx_ak_key ON apiKeys(key)",
+      "CREATE INDEX IF NOT EXISTS idx_ak_userid ON apiKeys(userId)",
+    ],
   },
   combos: {
     columns: {

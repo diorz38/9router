@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getApiKeys, createApiKey } from "@/lib/localDb";
+import { getApiKeys, createApiKey, createPortalUser, getPortalUserById } from "@/lib/localDb";
 import { getConsistentMachineId } from "@/shared/utils/machineId";
 import { validateKeyAccessInput } from "@/shared/utils/keyAccess.js";
 
@@ -20,13 +20,29 @@ export async function GET() {
 export async function POST(request) {
   try {
     const body = await request.json();
-    const { name, access, maxTokens } = body;
+    const { name, access, maxTokens, autoCreateUser, userId, userName } = body;
 
     if (!name || typeof name !== "string" || !name.trim()) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 });
     }
 
     const options = {};
+    let createdPortalUser = null;
+
+    // Handle user assignment
+    if (autoCreateUser) {
+      // Auto-generate username and password for first key
+      createdPortalUser = await createPortalUser({
+        name: userName || name.trim(),
+      });
+      options.userId = createdPortalUser.id;
+    } else if (userId) {
+      const existingUser = await getPortalUserById(userId);
+      if (!existingUser) {
+        return NextResponse.json({ error: "Specified user does not exist" }, { status: 400 });
+      }
+      options.userId = existingUser.id;
+    }
 
     if (access !== undefined) {
       const checked = validateKeyAccessInput(access);
@@ -50,13 +66,22 @@ export async function POST(request) {
       key: apiKey.key,
       name: apiKey.name,
       id: apiKey.id,
+      userId: apiKey.userId || null,
       machineId: apiKey.machineId,
       access: apiKey.access,
       maxTokens: apiKey.maxTokens,
       usedTokens: apiKey.usedTokens,
+      portalUser: createdPortalUser ? {
+        id: createdPortalUser.id,
+        username: createdPortalUser.username,
+        rawPassword: createdPortalUser.rawPassword,
+        name: createdPortalUser.name,
+      } : null,
     }, { status: 201 });
   } catch (error) {
     console.log("Error creating key:", error);
-    return NextResponse.json({ error: "Failed to create key" }, { status: 500 });
+    return NextResponse.json({ error: error.message || "Failed to create key" }, { status: 500 });
+  }
+}
   }
 }
