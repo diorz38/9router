@@ -9,4 +9,7 @@ const isBuildPhase = process.env.NEXT_PHASE === "phase-production-build"
 if (typeof window === "undefined" && !isBuildPhase && !global.__appBootstrapped) {
   global.__appBootstrapped = true;
   initializeApp().catch((e) => console.error("[Bootstrap] init failed:", e.message));
+  import("@/lib/portalServer.js")
+    .then((m) => m.startUserPortalServer())
+    .catch(() => {});
 }
